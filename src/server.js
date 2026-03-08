@@ -28,7 +28,7 @@ function validateSubnet(subnet) {
 
 function runNmapScan({ subnet, outputFilePath }) {
   return new Promise((resolve, reject) => {
-    const nmapProcess = spawn('nmap', ['-sV', '-oX', outputFilePath, subnet]);
+    const nmapProcess = spawn('nmap', ['-sV', '-sC', '-oX', outputFilePath, subnet]);
     let stderr = '';
 
     nmapProcess.stderr.on('data', (chunk) => {
