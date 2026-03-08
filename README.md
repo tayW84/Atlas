@@ -1,3 +1,5 @@
+![Atlas Logo](logo.png)
+
 # Atlas Network Map
 
 Atlas is a lightweight Node.js app that parses Nmap scan outputs and visualizes discovered hosts/services in a browser-based topology graph.
