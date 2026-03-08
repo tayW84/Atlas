@@ -23,7 +23,8 @@ test('parseXmlContent extracts host, open ports, and service details', async () 
       protocol: 'tcp',
       state: 'open',
       service: 'ssh',
-      version: 'OpenSSH 8.9p1'
+      version: 'OpenSSH 8.9p1',
+      details: []
     }
   ]);
 });
@@ -40,18 +41,35 @@ test('parseTextContent extracts IPs, open ports, and service versions', async ()
     protocol: 'tcp',
     state: 'open',
     service: 'domain',
-    version: 'dnsmasq 2.80'
+    version: 'dnsmasq 2.80',
+    details: []
   });
   assert.deepEqual(result.hosts[1].ports[1], {
     port: 161,
     protocol: 'udp',
     state: 'open',
     service: 'snmp',
-    version: 'SNMPv2 server'
+    version: 'SNMPv2 server',
+    details: []
   });
 });
 
+test('parseTextContent keeps per-port script detail lines', () => {
+  const content = [
+    'Nmap scan report for 10.0.0.10',
+    'PORT     STATE SERVICE VERSION',
+    '80/tcp   open  http    nginx 1.24.0',
+    '| http-title: Internal landing page',
+    '|_http-server-header: nginx',
+    ''
+  ].join('\n');
 
+  const result = parseTextContent(content);
+  assert.deepEqual(result.hosts[0].ports[0].details, [
+    'http-title: Internal landing page',
+    'http-server-header: nginx'
+  ]);
+});
 
 test('parseTextContent extracts hostname and domain from host script results', async () => {
   const textContent = await readFixture('sample-host-script.txt');
@@ -73,6 +91,7 @@ test('parseScanDirectory merges scan files and buildGraph groups hosts by /24 su
 
   const parsed = await parseScanDirectory(tempDir);
   assert.equal(parsed.hosts.length, 3);
+  assert.deepEqual(parsed.hosts.find((host) => host.ip === '192.168.1.10').scanFiles, ['a.xml']);
 
   const graph = buildGraph(parsed.hosts);
   const subnetNode = graph.nodes.find((node) => node.data.id === '192.168.1.0/24');
@@ -82,7 +101,6 @@ test('parseScanDirectory merges scan files and buildGraph groups hosts by /24 su
   assert.ok(graph.edges.some((edge) => edge.data.target === '192.168.1.10'));
 });
 
-
 test('buildGraph uses domain as connected node when present', async () => {
   const graph = buildGraph([
     {
@@ -90,7 +108,8 @@ test('buildGraph uses domain as connected node when present', async () => {
       ip: '172.16.7.50',
       hostname: 'MS01',
       domain: 'INLANEFREIGHT',
-      ports: []
+      ports: [],
+      scanFiles: ['host.txt']
     }
   ]);
 
@@ -98,4 +117,5 @@ test('buildGraph uses domain as connected node when present', async () => {
   assert.ok(graph.edges.some((edge) => edge.data.source === 'INLANEFREIGHT' && edge.data.target === '172.16.7.50'));
   const hostNode = graph.nodes.find((node) => node.data.id === '172.16.7.50');
   assert.equal(hostNode.data.label, '172.16.7.50\nMS01');
+  assert.deepEqual(hostNode.data.metadata.scanFiles, ['host.txt']);
 });

@@ -37,13 +37,29 @@ function parseXmlHost(host) {
     }
 
     const serviceAttrs = portEntry.service?.[0]?.$ || portEntry.service?.$ || {};
+    const scriptEntries = ensureArray(portEntry.script);
+    const scriptDetails = scriptEntries
+      .map((scriptEntry) => {
+        const scriptAttrs = scriptEntry.$ || {};
+        if (!scriptAttrs.id && !scriptAttrs.output) {
+          return null;
+        }
+
+        if (scriptAttrs.id && scriptAttrs.output) {
+          return `${scriptAttrs.id}: ${scriptAttrs.output}`;
+        }
+
+        return scriptAttrs.id || scriptAttrs.output || null;
+      })
+      .filter(Boolean);
 
     ports.push({
       port: Number(attrs.portid),
       protocol: attrs.protocol || 'tcp',
       state: stateAttrs.state || 'open',
       service: serviceAttrs.name || 'unknown',
-      version: parseVersionFromService(serviceAttrs)
+      version: parseVersionFromService(serviceAttrs),
+      details: scriptDetails
     });
   }
 
@@ -52,7 +68,8 @@ function parseXmlHost(host) {
     ip,
     hostname: null,
     domain: null,
-    ports
+    ports,
+    scanFiles: []
   };
 }
 
@@ -93,7 +110,8 @@ function parseTextPortLine(line) {
     protocol: protocol.toLowerCase(),
     state: state.toLowerCase(),
     service: serviceName || 'unknown',
-    version: (remainder || '').trim()
+    version: (remainder || '').trim(),
+    details: []
   };
 }
 
@@ -103,6 +121,7 @@ function parseTextContent(content) {
 
   let currentHost = null;
   let inPortsSection = false;
+  let currentPort = null;
 
   for (const line of lines) {
     if (/^Nmap scan report for /i.test(line)) {
@@ -117,10 +136,12 @@ function parseTextContent(content) {
           ip,
           hostname: null,
           domain: null,
-          ports: []
+          ports: [],
+          scanFiles: []
         }
         : null;
       inPortsSection = false;
+      currentPort = null;
       continue;
     }
 
@@ -130,11 +151,13 @@ function parseTextContent(content) {
 
     if (/^PORT\s+STATE\s+SERVICE/i.test(line)) {
       inPortsSection = true;
+      currentPort = null;
       continue;
     }
 
     if (inPortsSection && line.trim() === '') {
       inPortsSection = false;
+      currentPort = null;
       continue;
     }
 
@@ -156,12 +179,24 @@ function parseTextContent(content) {
       continue;
     }
 
-    const parsedPort = parseTextPortLine(line.trim());
+    const trimmed = line.trim();
+
+    if (currentPort && /^\|/.test(trimmed)) {
+      const normalized = trimmed.replace(/^\|_?\s?/, '').trim();
+      if (normalized) {
+        currentPort.details.push(normalized);
+      }
+      continue;
+    }
+
+    const parsedPort = parseTextPortLine(trimmed);
     if (!parsedPort || parsedPort.state !== 'open') {
+      currentPort = null;
       continue;
     }
 
     currentHost.ports.push(parsedPort);
+    currentPort = parsedPort;
   }
 
   if (currentHost) {
@@ -182,7 +217,8 @@ function mergeResults(results) {
           ip: host.ip,
           hostname: null,
           domain: null,
-          ports: []
+          ports: [],
+          scanFiles: []
         });
       }
 
@@ -194,6 +230,15 @@ function mergeResults(results) {
 
       if (!existing.domain && host.domain) {
         existing.domain = host.domain;
+      }
+
+      const scanFileSet = new Set(existing.scanFiles);
+      for (const scanFile of host.scanFiles || []) {
+        if (scanFileSet.has(scanFile)) {
+          continue;
+        }
+        existing.scanFiles.push(scanFile);
+        scanFileSet.add(scanFile);
       }
 
       const portKeySet = new Set(existing.ports.map((port) => `${port.port}/${port.protocol}`));
@@ -243,16 +288,24 @@ async function parseScanDirectory(scanDirectory) {
       continue;
     }
 
+    let parsed;
+
     if (trimmed.startsWith('<')) {
       try {
-        parseResults.push(await parseXmlContent(trimmed));
-        continue;
+        parsed = await parseXmlContent(trimmed);
       } catch (error) {
-        // Fall through to text parser as best-effort fallback.
+        parsed = parseTextContent(trimmed);
       }
+    } else {
+      parsed = parseTextContent(trimmed);
     }
 
-    parseResults.push(parseTextContent(trimmed));
+    parsed.hosts = parsed.hosts.map((host) => ({
+      ...host,
+      scanFiles: Array.from(new Set([...(host.scanFiles || []), fileName]))
+    }));
+
+    parseResults.push(parsed);
   }
 
   return mergeResults(parseResults);

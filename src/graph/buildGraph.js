@@ -27,7 +27,8 @@ function buildGraph(hosts = []) {
           ip: host.ip,
           hostname: host.hostname || null,
           domain: host.domain || null,
-          ports: host.ports || []
+          ports: host.ports || [],
+          scanFiles: host.scanFiles || []
         }
       }
     });
