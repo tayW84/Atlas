@@ -1,0 +1,16 @@
+{
+  "name": "atlas-network-map",
+  "version": "1.0.0",
+  "description": "Nmap scan parser and topology visualizer",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "express": "^4.21.2",
+    "xml2js": "^0.6.2"
+  }
+}
