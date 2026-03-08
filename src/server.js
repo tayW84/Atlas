@@ -18,21 +18,49 @@ app.get('/logo.png', (req, res) => {
   res.sendFile(path.resolve(__dirname, '..', 'logo.png'));
 });
 
-function validateSubnet(subnet) {
-  const subnetPattern = /^(?:\d{1,3}\.){3}\d{1,3}\/(?:[0-9]|[1-2][0-9]|3[0-2])$/;
-  if (!subnetPattern.test(subnet)) {
+function isValidIpv4Address(value) {
+  const ipPattern = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+  if (!ipPattern.test(value)) {
     return false;
   }
 
-  const [address] = subnet.split('/');
-  const octets = address.split('.').map(Number);
-
+  const octets = value.split('.').map(Number);
   return octets.every((octet) => octet >= 0 && octet <= 255);
 }
 
-function runNmapScan({ subnet, outputFilePath }) {
+function classifyScanTarget(rawTarget) {
+  const target = rawTarget.trim();
+  if (!target) {
+    return { kind: 'invalid', value: target };
+  }
+
+  if (target.includes('/')) {
+    const subnetPattern = /^(?:\d{1,3}\.){3}\d{1,3}\/(?:[0-9]|[1-2][0-9]|3[0-2])$/;
+    if (!subnetPattern.test(target)) {
+      return { kind: 'invalid', value: target };
+    }
+
+    const [address] = target.split('/');
+    if (!isValidIpv4Address(address)) {
+      return { kind: 'invalid', value: target };
+    }
+
+    return { kind: 'cidr', value: target };
+  }
+
+  if (isValidIpv4Address(target)) {
+    return { kind: 'ip', value: target };
+  }
+
+  return { kind: 'invalid', value: target };
+}
+
+function runNmapScan({ target, targetKind, outputFilePath }) {
   return new Promise((resolve, reject) => {
-    const nmapProcess = spawn('nmap', [...nmapScanFlags, '-oX', outputFilePath, subnet]);
+    const scanFlags = targetKind === 'cidr'
+      ? [...nmapScanFlags, '--open']
+      : [...nmapScanFlags];
+    const nmapProcess = spawn('nmap', [...scanFlags, '-oX', outputFilePath, target]);
     let stderr = '';
 
     nmapProcess.stderr.on('data', (chunk) => {
@@ -80,10 +108,11 @@ app.get('/api/network-map', async (req, res) => {
 });
 
 app.post('/api/run-scan', async (req, res) => {
-  const requestedSubnet = (req.body?.subnet || defaultSubnet).trim();
+  const requestedTarget = (req.body?.subnet || defaultSubnet).trim();
+  const scanTarget = classifyScanTarget(requestedTarget);
 
-  if (!validateSubnet(requestedSubnet)) {
-    res.status(400).json({ error: 'Invalid subnet format. Expected CIDR notation like 192.168.1.0/24.' });
+  if (scanTarget.kind === 'invalid') {
+    res.status(400).json({ error: 'Invalid target format. Enter CIDR notation (192.168.1.0/24) or a single IPv4 address.' });
     return;
   }
 
@@ -92,11 +121,16 @@ app.post('/api/run-scan', async (req, res) => {
 
   try {
     await fs.mkdir(scanDirectoryPath, { recursive: true });
-    await runNmapScan({ subnet: requestedSubnet, outputFilePath });
+    await runNmapScan({
+      target: scanTarget.value,
+      targetKind: scanTarget.kind,
+      outputFilePath
+    });
 
     res.json({
       message: 'Scan completed successfully',
-      subnet: requestedSubnet,
+      target: scanTarget.value,
+      targetType: scanTarget.kind,
       outputFile: outputFileName
     });
   } catch (error) {

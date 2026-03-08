@@ -222,7 +222,8 @@ async function runScan() {
       throw new Error(payload.error || payload.details || 'Failed to run scan');
     }
 
-    setScanStatus(`Scan complete for ${payload.subnet}. Saved to ${payload.outputFile}.`);
+    const scannedTarget = payload.target || payload.subnet;
+    setScanStatus(`Scan complete for ${scannedTarget}. Saved to ${payload.outputFile}.`);
     await loadGraph();
   } catch (error) {
     setScanStatus(`Unable to run scan: ${error.message}`, true);
