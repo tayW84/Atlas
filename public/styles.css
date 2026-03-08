@@ -65,17 +65,6 @@ h1 {
   margin: 0.1rem 0 0;
 }
 
-.header-actions {
-  align-items: center;
-  display: flex;
-  gap: 0.5rem;
-}
-
-#subnet-input {
-  min-width: 180px;
-  padding: 0.4rem 0.5rem;
-}
-
 main {
   display: grid;
   gap: 1rem;
@@ -115,16 +104,6 @@ main {
   opacity: 0.6;
   pointer-events: none;
   text-decoration: none;
-}
-
-#scan-status {
-  font-size: 0.9rem;
-  margin: 0 0 1rem;
-  min-height: 1.2rem;
-}
-
-#scan-status[data-state='error'] {
-  color: #ff8a8a;
 }
 
 #ports-list {
