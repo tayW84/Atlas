@@ -50,6 +50,8 @@ function parseXmlHost(host) {
   return {
     id: ip,
     ip,
+    hostname: null,
+    domain: null,
     ports
   };
 }
@@ -109,7 +111,15 @@ function parseTextContent(content) {
       }
 
       const ip = parseTextHostIp(line);
-      currentHost = ip ? { id: ip, ip, ports: [] } : null;
+      currentHost = ip
+        ? {
+          id: ip,
+          ip,
+          hostname: null,
+          domain: null,
+          ports: []
+        }
+        : null;
       inPortsSection = false;
       continue;
     }
@@ -129,6 +139,20 @@ function parseTextContent(content) {
     }
 
     if (!inPortsSection) {
+      const hostnameMatch = line.match(/NetBIOS name:\s*([^,\s]+)/i)
+        || line.match(/NetBIOS_Computer_Name:\s*(\S+)/i);
+
+      if (hostnameMatch && !currentHost.hostname) {
+        currentHost.hostname = hostnameMatch[1].trim();
+      }
+
+      const domainMatch = line.match(/NetBIOS_Domain_Name:\s*(\S+)/i)
+        || line.match(/^\|\s+([A-Z0-9._-]+)<00>\s+Flags:\s+<group><active>/i);
+
+      if (domainMatch && !currentHost.domain) {
+        currentHost.domain = domainMatch[1].trim();
+      }
+
       continue;
     }
 
@@ -156,11 +180,22 @@ function mergeResults(results) {
         hostMap.set(host.ip, {
           id: host.ip,
           ip: host.ip,
+          hostname: null,
+          domain: null,
           ports: []
         });
       }
 
       const existing = hostMap.get(host.ip);
+
+      if (!existing.hostname && host.hostname) {
+        existing.hostname = host.hostname;
+      }
+
+      if (!existing.domain && host.domain) {
+        existing.domain = host.domain;
+      }
+
       const portKeySet = new Set(existing.ports.map((port) => `${port.port}/${port.protocol}`));
 
       for (const port of host.ports || []) {

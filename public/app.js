@@ -2,16 +2,26 @@ let cy;
 
 function renderPortDetails(nodeData) {
   const hostIpElement = document.getElementById('host-ip');
+  const hostNameElement = document.getElementById('host-hostname');
+  const hostDomainElement = document.getElementById('host-domain');
   const portsListElement = document.getElementById('ports-list');
 
   portsListElement.innerHTML = '';
 
   if (!nodeData || nodeData.type !== 'host') {
     hostIpElement.textContent = 'Click a host node to inspect services.';
+    hostNameElement.textContent = '';
+    hostDomainElement.textContent = '';
     return;
   }
 
   hostIpElement.textContent = `IP: ${nodeData.metadata?.ip || nodeData.id}`;
+  hostNameElement.textContent = nodeData.metadata?.hostname
+    ? `Hostname: ${nodeData.metadata.hostname}`
+    : 'Hostname: Unknown';
+  hostDomainElement.textContent = nodeData.metadata?.domain
+    ? `Connected node: ${nodeData.metadata.domain}`
+    : '';
   const ports = nodeData.metadata?.ports || [];
 
   if (ports.length === 0) {
