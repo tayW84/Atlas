@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 
 const { parseXmlContent, parseTextContent, parseScanDirectory } = require('../src/parser/nmapParser');
-const { buildGraph } = require('../src/graph/buildGraph');
+const { buildGraph, subnetFromIp } = require('../src/graph/buildGraph');
 
 async function readFixture(name) {
   return fs.readFile(path.join(__dirname, 'fixtures', name), 'utf-8');
@@ -88,6 +88,11 @@ test('parseTextContent extracts hostname and domain from host script results', a
   ]);
 });
 
+test('subnetFromIp returns /24 subnet when IPv4 is valid', () => {
+  assert.equal(subnetFromIp('10.10.10.200'), '10.10.10.0/24');
+  assert.equal(subnetFromIp('not-an-ip'), null);
+});
+
 test('parseScanDirectory merges scan files and buildGraph groups hosts by /24 subnet', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'atlas-scan-'));
   const xmlFixture = await readFixture('sample.xml');
@@ -120,10 +125,38 @@ test('buildGraph uses domain as connected node when present', async () => {
     }
   ]);
 
-  assert.ok(graph.nodes.some((node) => node.data.id === 'INLANEFREIGHT'));
+  const domainNode = graph.nodes.find((node) => node.data.id === 'INLANEFREIGHT');
+  assert.ok(domainNode);
+  assert.equal(domainNode.data.label, 'INLANEFREIGHT\n172.16.7.0/24');
   assert.ok(graph.edges.some((edge) => edge.data.source === 'INLANEFREIGHT' && edge.data.target === '172.16.7.50'));
   const hostNode = graph.nodes.find((node) => node.data.id === '172.16.7.50');
   assert.equal(hostNode.data.label, 'MS01\n172.16.7.50');
   assert.deepEqual(hostNode.data.metadata.hostScriptResults, []);
   assert.deepEqual(hostNode.data.metadata.scanFiles, ['host.txt']);
+});
+
+test('buildGraph adds dashed-link relationship for hosts sharing a domain subnet', () => {
+  const graph = buildGraph([
+    {
+      id: '10.10.10.100',
+      ip: '10.10.10.100',
+      hostname: 'SQL1',
+      domain: 'TAYW',
+      ports: [],
+      scanFiles: []
+    },
+    {
+      id: '10.10.10.200',
+      ip: '10.10.10.200',
+      hostname: 'WEB1',
+      ports: [],
+      scanFiles: []
+    }
+  ]);
+
+  const linkEdge = graph.edges.find((edge) => edge.data.id === 'TAYW~10.10.10.200');
+  assert.ok(linkEdge);
+  assert.equal(linkEdge.data.source, 'TAYW');
+  assert.equal(linkEdge.data.target, '10.10.10.200');
+  assert.equal(linkEdge.data.type, 'domain-subnet-link');
 });

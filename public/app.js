@@ -133,6 +133,14 @@ function initializeGraph(elements) {
           'target-arrow-color': '#8a8a8a',
           'target-arrow-shape': 'triangle'
         }
+      },
+      {
+        selector: 'edge[type="domain-subnet-link"]',
+        style: {
+          'line-style': 'dashed',
+          'target-arrow-shape': 'none',
+          'line-color': '#4caf50'
+        }
       }
     ],
     layout: {
