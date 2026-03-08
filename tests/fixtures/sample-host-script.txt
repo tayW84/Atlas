@@ -1,0 +1,13 @@
+Nmap scan report for 172.16.7.50
+Host is up (0.022s latency).
+PORT     STATE SERVICE       VERSION
+3389/tcp open  ms-wbt-server Microsoft Terminal Services
+
+Host script results:
+| nbstat: NetBIOS name: MS01, NetBIOS user: <unknown>, NetBIOS MAC: 00:50:56:b0:38:59 (VMware)
+| rdp-ntlm-info:
+|   NetBIOS_Domain_Name: INLANEFREIGHT
+|   NetBIOS_Computer_Name: MS01
+|_  DNS_Computer_Name: MS01.INLANEFREIGHT.LOCAL
+
+Nmap done.

@@ -5,8 +5,8 @@ Atlas is a lightweight Node.js app that parses Nmap scan outputs and visualizes 
 ## Features
 
 - Parses Nmap XML (`-oX`) files first, then falls back to plain text parsing.
-- Normalizes hosts into `{ id, ip, ports[] }` objects.
-- Builds a graph with host nodes and `/24` subnet hub nodes.
+- Normalizes hosts into `{ id, ip, hostname, domain, ports[] }` objects when available.
+- Builds a graph with host nodes and shared domain hub nodes (falls back to `/24` subnet hubs).
 - Serves graph data over JSON APIs and renders with Cytoscape.js.
 
 ## Getting Started
@@ -69,7 +69,7 @@ You can place multiple files in the scan directory; results are merged by host I
   - Nmap normal text output (`-oN`) with `PORT STATE SERVICE VERSION` table parsing.
 - **Limitations**:
   - Only IPv4 host extraction is currently normalized.
-  - Edge inference is topology-based (`/24` subnet grouping), not traffic/flow-based.
+  - Edge inference is topology-based (shared domain grouping, with `/24` fallback), not traffic/flow-based.
   - Text parser focuses on common Nmap output patterns and may skip unusual layouts.
 
 ## Testing

@@ -51,6 +51,18 @@ test('parseTextContent extracts IPs, open ports, and service versions', async ()
   });
 });
 
+
+
+test('parseTextContent extracts hostname and domain from host script results', async () => {
+  const textContent = await readFixture('sample-host-script.txt');
+  const result = parseTextContent(textContent);
+
+  assert.equal(result.hosts.length, 1);
+  assert.equal(result.hosts[0].ip, '172.16.7.50');
+  assert.equal(result.hosts[0].hostname, 'MS01');
+  assert.equal(result.hosts[0].domain, 'INLANEFREIGHT');
+});
+
 test('parseScanDirectory merges scan files and buildGraph groups hosts by /24 subnet', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'atlas-scan-'));
   const xmlFixture = await readFixture('sample.xml');
@@ -65,7 +77,25 @@ test('parseScanDirectory merges scan files and buildGraph groups hosts by /24 su
   const graph = buildGraph(parsed.hosts);
   const subnetNode = graph.nodes.find((node) => node.data.id === '192.168.1.0/24');
 
-  assert.ok(subnetNode, 'expected subnet hub node to be created');
+  assert.ok(subnetNode, 'expected connected hub node to be created');
   assert.equal(graph.edges.length, 3);
   assert.ok(graph.edges.some((edge) => edge.data.target === '192.168.1.10'));
+});
+
+
+test('buildGraph uses domain as connected node when present', async () => {
+  const graph = buildGraph([
+    {
+      id: '172.16.7.50',
+      ip: '172.16.7.50',
+      hostname: 'MS01',
+      domain: 'INLANEFREIGHT',
+      ports: []
+    }
+  ]);
+
+  assert.ok(graph.nodes.some((node) => node.data.id === 'INLANEFREIGHT'));
+  assert.ok(graph.edges.some((edge) => edge.data.source === 'INLANEFREIGHT' && edge.data.target === '172.16.7.50'));
+  const hostNode = graph.nodes.find((node) => node.data.id === '172.16.7.50');
+  assert.equal(hostNode.data.label, '172.16.7.50\nMS01');
 });
