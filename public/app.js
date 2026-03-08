@@ -16,12 +16,6 @@ function setScanFileLink(scanFiles = []) {
   scanFileLink.textContent = `Open Nmap scan file (${primaryFile})`;
 }
 
-function setScanStatus(message, isError = false) {
-  const statusElement = document.getElementById('scan-status');
-  statusElement.textContent = message;
-  statusElement.dataset.state = isError ? 'error' : 'info';
-}
-
 function renderPortDetails(nodeData) {
   const hostIpElement = document.getElementById('host-ip');
   const hostNameElement = document.getElementById('host-hostname');
@@ -171,11 +165,6 @@ async function loadGraph() {
 
   const elements = [...payload.graph.nodes, ...payload.graph.edges];
 
-  const subnetInput = document.getElementById('subnet-input');
-  if (!subnetInput.value && payload.defaultSubnet) {
-    subnetInput.value = payload.defaultSubnet;
-  }
-
   if (cy) {
     cy.destroy();
   }
@@ -190,9 +179,7 @@ async function refreshGraph() {
 
   try {
     await loadGraph();
-    setScanStatus('Graph refreshed.');
   } catch (error) {
-    setScanStatus(`Unable to refresh graph: ${error.message}`, true);
     // eslint-disable-next-line no-alert
     alert(`Unable to refresh graph: ${error.message}`);
   } finally {
@@ -200,39 +187,5 @@ async function refreshGraph() {
   }
 }
 
-async function runScan() {
-  const runButton = document.getElementById('run-scan-btn');
-  const subnetInput = document.getElementById('subnet-input');
-
-  runButton.disabled = true;
-  setScanStatus('Running nmap scan. This can take a while...');
-
-  try {
-    const response = await fetch('/api/run-scan', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ subnet: subnetInput.value })
-    });
-
-    const payload = await response.json();
-
-    if (!response.ok) {
-      throw new Error(payload.error || payload.details || 'Failed to run scan');
-    }
-
-    setScanStatus(`Scan complete for ${payload.subnet}. Saved to ${payload.outputFile}.`);
-    await loadGraph();
-  } catch (error) {
-    setScanStatus(`Unable to run scan: ${error.message}`, true);
-    // eslint-disable-next-line no-alert
-    alert(`Unable to run scan: ${error.message}`);
-  } finally {
-    runButton.disabled = false;
-  }
-}
-
 document.getElementById('refresh-btn').addEventListener('click', refreshGraph);
-document.getElementById('run-scan-btn').addEventListener('click', runScan);
 refreshGraph();
