@@ -14,14 +14,13 @@
   </head>
   <body>
     <header>
-      <div class="brand">
-        <img src="/logo.png" alt="Atlas logo" class="brand-logo" />
-        <div>
-          <p class="brand-title">ATLAS</p>
-          <h1>Network Map</h1>
-        </div>
+      <h1>Atlas Network Map</h1>
+      <div class="header-actions">
+        <label for="subnet-input">Subnet</label>
+        <input id="subnet-input" type="text" placeholder="192.168.1.0/24" />
+        <button id="run-scan-btn">Run Nmap Scan</button>
+        <button id="refresh-btn">Refresh</button>
       </div>
-      <button id="refresh-btn">Refresh</button>
     </header>
 
     <main>
@@ -34,6 +33,7 @@
         <p id="host-ip"></p>
         <p id="host-domain"></p>
         <a id="scan-file-link" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true">Open Nmap scan file</a>
+        <p id="scan-status" role="status" aria-live="polite"></p>
         <h3>Open Ports</h3>
         <ul id="ports-list"></ul>
         <h3>Host Script Results</h3>
