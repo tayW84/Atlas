@@ -14,6 +14,9 @@ const nmapScanFlags = ['-sV', '-sC'];
 
 app.use(express.json());
 app.use(express.static(path.resolve(__dirname, '..', 'public')));
+app.get('/logo.png', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '..', 'logo.png'));
+});
 
 function validateSubnet(subnet) {
   const subnetPattern = /^(?:\d{1,3}\.){3}\d{1,3}\/(?:[0-9]|[1-2][0-9]|3[0-2])$/;
