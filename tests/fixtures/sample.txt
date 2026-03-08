@@ -1,0 +1,15 @@
+Starting Nmap 7.94
+Nmap scan report for 192.168.1.20
+Host is up (0.0010s latency).
+Not shown: 998 filtered tcp ports (no-response)
+PORT     STATE SERVICE VERSION
+53/tcp   open  domain  dnsmasq 2.80
+443/tcp  open  https   nginx 1.24.0
+
+Nmap scan report for gateway.local (192.168.1.1)
+Host is up (0.0020s latency).
+PORT     STATE SERVICE VERSION
+80/tcp   open  http    nginx 1.24.0
+161/udp  open  snmp    SNMPv2 server
+
+Nmap done.

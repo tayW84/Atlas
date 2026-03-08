@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atlas Network Map</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Atlas Network Map</h1>
+      <button id="refresh-btn">Refresh</button>
+    </header>
+
+    <main>
+      <section id="graph-panel">
+        <div id="cy"></div>
+      </section>
+      <aside id="details-panel">
+        <h2>Host Details</h2>
+        <p id="host-ip">Click a host node to inspect services.</p>
+        <ul id="ports-list"></ul>
+      </aside>
+    </main>
+
+    <script src="https://unpkg.com/cytoscape@3.30.3/dist/cytoscape.min.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
