@@ -20,14 +20,17 @@ function renderPortDetails(nodeData) {
   const hostIpElement = document.getElementById('host-ip');
   const hostNameElement = document.getElementById('host-hostname');
   const hostDomainElement = document.getElementById('host-domain');
+  const hostScriptResultsListElement = document.getElementById('host-script-results-list');
   const portsListElement = document.getElementById('ports-list');
 
+  hostScriptResultsListElement.innerHTML = '';
   portsListElement.innerHTML = '';
 
   if (!nodeData || nodeData.type !== 'host') {
     hostNameElement.textContent = 'Click a host node to inspect services.';
     hostIpElement.textContent = '';
     hostDomainElement.textContent = '';
+    hostScriptResultsListElement.innerHTML = '';
     setScanFileLink([]);
     return;
   }
@@ -41,6 +44,19 @@ function renderPortDetails(nodeData) {
     : '';
 
   setScanFileLink(nodeData.metadata?.scanFiles || []);
+
+  const hostScriptResults = nodeData.metadata?.hostScriptResults || [];
+  if (hostScriptResults.length === 0) {
+    const emptyStateItem = document.createElement('li');
+    emptyStateItem.textContent = 'No host script results available.';
+    hostScriptResultsListElement.appendChild(emptyStateItem);
+  } else {
+    for (const resultLine of hostScriptResults) {
+      const item = document.createElement('li');
+      item.textContent = resultLine;
+      hostScriptResultsListElement.appendChild(item);
+    }
+  }
 
   const ports = nodeData.metadata?.ports || [];
 
@@ -92,11 +108,11 @@ function initializeGraph(elements) {
           'background-color': '#1f77b4',
           color: '#ffffff',
           label: 'data(label)',
-          'font-size': 11,
+          'font-size': 12,
           'text-valign': 'center',
           'text-wrap': 'wrap',
-          width: 45,
-          height: 45
+          width: 72,
+          height: 72
         }
       },
       {

@@ -68,6 +68,7 @@ function parseXmlHost(host) {
     ip,
     hostname: null,
     domain: null,
+    hostScriptResults: [],
     ports,
     scanFiles: []
   };
@@ -121,6 +122,7 @@ function parseTextContent(content) {
 
   let currentHost = null;
   let inPortsSection = false;
+  let inHostScriptSection = false;
   let currentPort = null;
 
   for (const line of lines) {
@@ -136,11 +138,13 @@ function parseTextContent(content) {
           ip,
           hostname: null,
           domain: null,
+          hostScriptResults: [],
           ports: [],
           scanFiles: []
         }
         : null;
       inPortsSection = false;
+      inHostScriptSection = false;
       currentPort = null;
       continue;
     }
@@ -149,8 +153,16 @@ function parseTextContent(content) {
       continue;
     }
 
+    if (/^Host script results:/i.test(line)) {
+      inHostScriptSection = true;
+      inPortsSection = false;
+      currentPort = null;
+      continue;
+    }
+
     if (/^PORT\s+STATE\s+SERVICE/i.test(line)) {
       inPortsSection = true;
+      inHostScriptSection = false;
       currentPort = null;
       continue;
     }
@@ -159,6 +171,21 @@ function parseTextContent(content) {
       inPortsSection = false;
       currentPort = null;
       continue;
+    }
+
+    if (inHostScriptSection) {
+      if (line.trim() === '') {
+        inHostScriptSection = false;
+        continue;
+      }
+
+      const trimmed = line.trim();
+      if (/^\|/.test(trimmed)) {
+        const normalized = trimmed.replace(/^\|_?\s?/, '').trim();
+        if (normalized) {
+          currentHost.hostScriptResults.push(normalized);
+        }
+      }
     }
 
     if (!inPortsSection) {
@@ -217,6 +244,7 @@ function mergeResults(results) {
           ip: host.ip,
           hostname: null,
           domain: null,
+          hostScriptResults: [],
           ports: [],
           scanFiles: []
         });
@@ -230,6 +258,15 @@ function mergeResults(results) {
 
       if (!existing.domain && host.domain) {
         existing.domain = host.domain;
+      }
+
+      const hostScriptSet = new Set(existing.hostScriptResults);
+      for (const line of host.hostScriptResults || []) {
+        if (hostScriptSet.has(line)) {
+          continue;
+        }
+        existing.hostScriptResults.push(line);
+        hostScriptSet.add(line);
       }
 
       const scanFileSet = new Set(existing.scanFiles);

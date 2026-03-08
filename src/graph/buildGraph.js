@@ -21,12 +21,13 @@ function buildGraph(hosts = []) {
     nodes.push({
       data: {
         id: host.id,
-        label: host.hostname ? `${host.ip}\n${host.hostname}` : host.ip,
+        label: host.hostname ? `${host.hostname}\n${host.ip}` : host.ip,
         type: 'host',
         metadata: {
           ip: host.ip,
           hostname: host.hostname || null,
           domain: host.domain || null,
+          hostScriptResults: host.hostScriptResults || [],
           ports: host.ports || [],
           scanFiles: host.scanFiles || []
         }

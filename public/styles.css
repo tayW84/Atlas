@@ -57,6 +57,17 @@ main {
   padding: 0;
 }
 
+#host-script-results-list {
+  list-style: disc;
+  margin-top: 0;
+  padding-left: 1.2rem;
+}
+
+#host-script-results-list li {
+  margin-bottom: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
 #ports-list li {
   border-bottom: 1px solid #444;
   padding: 0.5rem 0;
