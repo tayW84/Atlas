@@ -79,6 +79,13 @@ test('parseTextContent extracts hostname and domain from host script results', a
   assert.equal(result.hosts[0].ip, '172.16.7.50');
   assert.equal(result.hosts[0].hostname, 'MS01');
   assert.equal(result.hosts[0].domain, 'INLANEFREIGHT');
+  assert.deepEqual(result.hosts[0].hostScriptResults, [
+    'nbstat: NetBIOS name: MS01, NetBIOS user: <unknown>, NetBIOS MAC: 00:50:56:b0:38:59 (VMware)',
+    'rdp-ntlm-info:',
+    'NetBIOS_Domain_Name: INLANEFREIGHT',
+    'NetBIOS_Computer_Name: MS01',
+    'DNS_Computer_Name: MS01.INLANEFREIGHT.LOCAL'
+  ]);
 });
 
 test('parseScanDirectory merges scan files and buildGraph groups hosts by /24 subnet', async () => {
@@ -116,6 +123,7 @@ test('buildGraph uses domain as connected node when present', async () => {
   assert.ok(graph.nodes.some((node) => node.data.id === 'INLANEFREIGHT'));
   assert.ok(graph.edges.some((edge) => edge.data.source === 'INLANEFREIGHT' && edge.data.target === '172.16.7.50'));
   const hostNode = graph.nodes.find((node) => node.data.id === '172.16.7.50');
-  assert.equal(hostNode.data.label, '172.16.7.50\nMS01');
+  assert.equal(hostNode.data.label, 'MS01\n172.16.7.50');
+  assert.deepEqual(hostNode.data.metadata.hostScriptResults, []);
   assert.deepEqual(hostNode.data.metadata.scanFiles, ['host.txt']);
 });
