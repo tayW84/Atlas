@@ -1,5 +1,21 @@
 let cy;
 
+function setScanFileLink(scanFiles = []) {
+  const scanFileLink = document.getElementById('scan-file-link');
+  const primaryFile = scanFiles[0];
+
+  if (!primaryFile) {
+    scanFileLink.href = '#';
+    scanFileLink.setAttribute('aria-disabled', 'true');
+    scanFileLink.textContent = 'Open Nmap scan file';
+    return;
+  }
+
+  scanFileLink.href = `/api/scan-files/${encodeURIComponent(primaryFile)}`;
+  scanFileLink.setAttribute('aria-disabled', 'false');
+  scanFileLink.textContent = `Open Nmap scan file (${primaryFile})`;
+}
+
 function renderPortDetails(nodeData) {
   const hostIpElement = document.getElementById('host-ip');
   const hostNameElement = document.getElementById('host-hostname');
@@ -9,19 +25,23 @@ function renderPortDetails(nodeData) {
   portsListElement.innerHTML = '';
 
   if (!nodeData || nodeData.type !== 'host') {
-    hostIpElement.textContent = 'Click a host node to inspect services.';
-    hostNameElement.textContent = '';
+    hostNameElement.textContent = 'Click a host node to inspect services.';
+    hostIpElement.textContent = '';
     hostDomainElement.textContent = '';
+    setScanFileLink([]);
     return;
   }
 
-  hostIpElement.textContent = `IP: ${nodeData.metadata?.ip || nodeData.id}`;
   hostNameElement.textContent = nodeData.metadata?.hostname
     ? `Hostname: ${nodeData.metadata.hostname}`
     : 'Hostname: Unknown';
+  hostIpElement.textContent = `IP: ${nodeData.metadata?.ip || nodeData.id}`;
   hostDomainElement.textContent = nodeData.metadata?.domain
     ? `Connected node: ${nodeData.metadata.domain}`
     : '';
+
+  setScanFileLink(nodeData.metadata?.scanFiles || []);
+
   const ports = nodeData.metadata?.ports || [];
 
   if (ports.length === 0) {
@@ -33,8 +53,28 @@ function renderPortDetails(nodeData) {
 
   for (const port of ports) {
     const item = document.createElement('li');
+    const summaryButton = document.createElement('button');
+    summaryButton.type = 'button';
+    summaryButton.className = 'port-toggle';
+
     const versionText = port.version ? ` (${port.version})` : '';
-    item.textContent = `${port.port}/${port.protocol} ${port.service}${versionText}`;
+    summaryButton.textContent = `${port.port}/${port.protocol} ${port.service}${versionText}`;
+
+    const detailsElement = document.createElement('pre');
+    detailsElement.className = 'port-extra-details';
+    detailsElement.hidden = true;
+
+    const detailLines = Array.isArray(port.details) ? port.details : [];
+    detailsElement.textContent = detailLines.length > 0
+      ? detailLines.join('\n')
+      : 'No additional Nmap script details available for this port.';
+
+    summaryButton.addEventListener('click', () => {
+      detailsElement.hidden = !detailsElement.hidden;
+    });
+
+    item.appendChild(summaryButton);
+    item.appendChild(detailsElement);
     portsListElement.appendChild(item);
   }
 }
