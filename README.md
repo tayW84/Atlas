@@ -10,6 +10,7 @@ Atlas is a lightweight Node.js app that parses Nmap scan outputs and visualizes 
 - Normalizes hosts into `{ id, ip, hostname, domain, ports[] }` objects when available.
 - Builds a graph with host nodes and shared domain hub nodes (falls back to `/24` subnet hubs).
 - Serves graph data over JSON APIs and renders with Cytoscape.js.
+- Trigger an Nmap scan for a subnet from the UI and save output into the scans directory.
 
 ## Getting Started
 
@@ -45,6 +46,12 @@ NMAP_SCAN_DIR=/path/to/scans npm start
 
 ## Nmap command examples
 
+Set `NMAP_DEFAULT_SUBNET` to change the subnet pre-filled in the UI run-scan control:
+
+```bash
+NMAP_DEFAULT_SUBNET=10.0.0.0/24 npm start
+```
+
 Write XML scan output:
 
 ```bash
@@ -63,6 +70,7 @@ You can place multiple files in the scan directory; results are merged by host I
 
 - `GET /api/health` → `{ status: "ok" }`
 - `GET /api/network-map` → scan metadata, normalized hosts, and graph nodes/edges
+- `POST /api/run-scan` → run `nmap -sV -oX` for a subnet and save output to the scan directory
 
 ## Supported formats and limitations
 
