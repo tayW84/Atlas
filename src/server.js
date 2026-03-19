@@ -4,6 +4,7 @@ const { spawn } = require('node:child_process');
 const express = require('express');
 const { parseScanDirectory } = require('./parser/nmapParser');
 const { buildGraph } = require('./graph/buildGraph');
+const { isValidIpv4Address } = require('./netUtils');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -17,16 +18,6 @@ app.use(express.static(path.resolve(__dirname, '..', 'public')));
 app.get('/logo.png', (req, res) => {
   res.sendFile(path.resolve(__dirname, '..', 'logo.png'));
 });
-
-function isValidIpv4Address(value) {
-  const ipPattern = /^(?:\d{1,3}\.){3}\d{1,3}$/;
-  if (!ipPattern.test(value)) {
-    return false;
-  }
-
-  const octets = value.split('.').map(Number);
-  return octets.every((octet) => octet >= 0 && octet <= 255);
-}
 
 function classifyScanTarget(rawTarget) {
   const target = rawTarget.trim();
