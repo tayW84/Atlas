@@ -261,6 +261,13 @@ function hideContextMenu() {
   menu.dataset.edgeTarget = '';
 }
 
+function queueContextMenuAction(callback) {
+  hideContextMenu();
+  window.requestAnimationFrame(() => {
+    callback();
+  });
+}
+
 function showContextMenuForNode(event) {
   const menu = document.getElementById('context-menu');
   const targetNode = event.target;
@@ -611,32 +618,47 @@ function bindContextMenuActions() {
     const targetGroup = menu.dataset.targetGroup;
     const targetId = menu.dataset.targetId;
 
-    hideContextMenu();
+    queueContextMenuAction(() => {
+      if (targetGroup !== 'node') {
+        setScanStatus('Select a node or domain to create a connection.', true);
+        return;
+      }
 
-    if (targetGroup !== 'node') {
-      setScanStatus('Select a node or domain to create a connection.', true);
-      return;
-    }
-
-    handleNodeConnectionAction(targetId);
+      handleNodeConnectionAction(targetId);
+    });
   });
 
   document.getElementById('context-note-btn').addEventListener('click', () => {
     const menu = document.getElementById('context-menu');
     const { targetGroup, targetId, edgeSource, edgeTarget } = menu.dataset;
-    hideContextMenu();
-    handleNoteAction(targetGroup, targetId, edgeSource, edgeTarget);
+
+    queueContextMenuAction(() => {
+      handleNoteAction(targetGroup, targetId, edgeSource, edgeTarget);
+    });
   });
 
   document.getElementById('context-cancel-connect-btn').addEventListener('click', () => {
-    connectionDraft = null;
+    queueContextMenuAction(() => {
+      connectionDraft = null;
+      setScanStatus('Connection mode cancelled.', false);
+    });
+  });
+
+  document.getElementById('context-close-btn').addEventListener('click', () => {
     hideContextMenu();
-    setScanStatus('Connection mode cancelled.', false);
   });
 
   document.addEventListener('pointerdown', (event) => {
     const menu = document.getElementById('context-menu');
     if (!menu.hidden && !menu.contains(event.target)) {
+      hideContextMenu();
+    }
+  }, true);
+
+  document.addEventListener('contextmenu', (event) => {
+    const menu = document.getElementById('context-menu');
+    if (!menu.hidden && !menu.contains(event.target)) {
+      event.preventDefault();
       hideContextMenu();
     }
   }, true);
