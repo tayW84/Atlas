@@ -12,6 +12,7 @@ Atlas is a lightweight Node.js app that parses Nmap scan outputs and visualizes 
 - Serves graph data over JSON APIs and renders with Cytoscape.js.
 - Trigger an Nmap scan for a subnet from the UI and save output into the scans directory.
 - UI-triggered scans run with `-sV -sC -oX` and save XML output in the scan directory.
+- Lets you anchor the map from a selected node so the graph stays in a consistent left-to-right attack-path view across refreshes.
 
 ## Getting Started
 

@@ -68,7 +68,20 @@ h1 {
 .header-actions {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.layout-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.layout-actions button {
+  background: linear-gradient(135deg, rgba(101, 213, 255, 0.24), rgba(161, 123, 255, 0.28));
+  border: 1px solid rgba(140, 164, 255, 0.4);
+  color: var(--text-main);
 }
 
 #subnet-input {
