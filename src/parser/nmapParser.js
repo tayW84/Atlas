@@ -7,6 +7,18 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [value];
 }
 
+function createHost(ip, hostname = null) {
+  return {
+    id: ip,
+    ip,
+    hostname: hostname || null,
+    domain: null,
+    hostScriptResults: [],
+    ports: [],
+    scanFiles: []
+  };
+}
+
 function parseVersionFromService(serviceAttrs = {}) {
   const versionParts = [serviceAttrs.product, serviceAttrs.version, serviceAttrs.extrainfo]
     .filter(Boolean)
@@ -16,15 +28,24 @@ function parseVersionFromService(serviceAttrs = {}) {
   return versionParts || '';
 }
 
-function parseXmlHost(host) {
-  const addresses = ensureArray(host.address);
-  const ipv4Addr = addresses.find((entry) => entry.$?.addrtype === 'ipv4') || addresses[0];
-  const ip = ipv4Addr?.$?.addr;
+function parseScriptDetails(scriptEntries = []) {
+  return ensureArray(scriptEntries)
+    .map((scriptEntry) => {
+      const scriptAttrs = scriptEntry.$ || {};
+      if (!scriptAttrs.id && !scriptAttrs.output) {
+        return null;
+      }
 
-  if (!ip) {
-    return null;
-  }
+      if (scriptAttrs.id && scriptAttrs.output) {
+        return `${scriptAttrs.id}: ${scriptAttrs.output}`;
+      }
 
+      return scriptAttrs.id || scriptAttrs.output || null;
+    })
+    .filter(Boolean);
+}
+
+function parseXmlPorts(host = {}) {
   const ports = [];
   const portEntries = ensureArray(host.ports?.[0]?.port || host.ports?.port);
 
@@ -37,21 +58,6 @@ function parseXmlHost(host) {
     }
 
     const serviceAttrs = portEntry.service?.[0]?.$ || portEntry.service?.$ || {};
-    const scriptEntries = ensureArray(portEntry.script);
-    const scriptDetails = scriptEntries
-      .map((scriptEntry) => {
-        const scriptAttrs = scriptEntry.$ || {};
-        if (!scriptAttrs.id && !scriptAttrs.output) {
-          return null;
-        }
-
-        if (scriptAttrs.id && scriptAttrs.output) {
-          return `${scriptAttrs.id}: ${scriptAttrs.output}`;
-        }
-
-        return scriptAttrs.id || scriptAttrs.output || null;
-      })
-      .filter(Boolean);
 
     ports.push({
       port: Number(attrs.portid),
@@ -59,18 +65,28 @@ function parseXmlHost(host) {
       state: stateAttrs.state || 'open',
       service: serviceAttrs.name || 'unknown',
       version: parseVersionFromService(serviceAttrs),
-      details: scriptDetails
+      details: parseScriptDetails(portEntry.script)
     });
   }
 
+  return ports;
+}
+
+function parseXmlHost(host) {
+  const addresses = ensureArray(host.address);
+  const ipv4Addr = addresses.find((entry) => entry.$?.addrtype === 'ipv4') || addresses[0];
+  const ip = ipv4Addr?.$?.addr;
+
+  if (!ip) {
+    return null;
+  }
+
+  const hostnames = ensureArray(host.hostnames?.[0]?.hostname || host.hostnames?.hostname);
+  const hostname = hostnames[0]?.$?.name || null;
+
   return {
-    id: ip,
-    ip,
-    hostname: null,
-    domain: null,
-    hostScriptResults: [],
-    ports,
-    scanFiles: []
+    ...createHost(ip, hostname),
+    ports: parseXmlPorts(host)
   };
 }
 
@@ -88,14 +104,24 @@ async function parseXmlContent(content) {
   return { hosts, edges: [] };
 }
 
-function parseTextHostIp(line) {
-  const withParen = line.match(/Nmap scan report for .*\((\d+\.\d+\.\d+\.\d+)\)/i);
+function parseTextHostLine(line) {
+  const withParen = line.match(/^Nmap scan report for\s+(.+?)\s+\((\d+\.\d+\.\d+\.\d+)\)$/i);
   if (withParen) {
-    return withParen[1];
+    return {
+      hostname: withParen[1].trim(),
+      ip: withParen[2]
+    };
   }
 
-  const directIp = line.match(/Nmap scan report for (\d+\.\d+\.\d+\.\d+)/i);
-  return directIp ? directIp[1] : null;
+  const directIp = line.match(/^Nmap scan report for\s+(\d+\.\d+\.\d+\.\d+)$/i);
+  if (directIp) {
+    return {
+      hostname: null,
+      ip: directIp[1]
+    };
+  }
+
+  return null;
 }
 
 function parseTextPortLine(line) {
@@ -116,6 +142,10 @@ function parseTextPortLine(line) {
   };
 }
 
+function normalizeScriptLine(line) {
+  return line.replace(/^\|_?\s?/, '').trim();
+}
+
 function parseTextContent(content) {
   const lines = content.split(/\r?\n/);
   const hosts = [];
@@ -131,18 +161,8 @@ function parseTextContent(content) {
         hosts.push(currentHost);
       }
 
-      const ip = parseTextHostIp(line);
-      currentHost = ip
-        ? {
-          id: ip,
-          ip,
-          hostname: null,
-          domain: null,
-          hostScriptResults: [],
-          ports: [],
-          scanFiles: []
-        }
-        : null;
+      const parsedHostLine = parseTextHostLine(line);
+      currentHost = parsedHostLine ? createHost(parsedHostLine.ip, parsedHostLine.hostname) : null;
       inPortsSection = false;
       inHostScriptSection = false;
       currentPort = null;
@@ -181,7 +201,7 @@ function parseTextContent(content) {
 
       const trimmed = line.trim();
       if (/^\|/.test(trimmed)) {
-        const normalized = trimmed.replace(/^\|_?\s?/, '').trim();
+        const normalized = normalizeScriptLine(trimmed);
         if (normalized) {
           currentHost.hostScriptResults.push(normalized);
         }
@@ -209,7 +229,7 @@ function parseTextContent(content) {
     const trimmed = line.trim();
 
     if (currentPort && /^\|/.test(trimmed)) {
-      const normalized = trimmed.replace(/^\|_?\s?/, '').trim();
+      const normalized = normalizeScriptLine(trimmed);
       if (normalized) {
         currentPort.details.push(normalized);
       }
@@ -233,21 +253,33 @@ function parseTextContent(content) {
   return { hosts, edges: [] };
 }
 
+function mergePortDetails(existingPort, incomingPort) {
+  if (!existingPort.version && incomingPort.version) {
+    existingPort.version = incomingPort.version;
+  }
+
+  if (existingPort.service === 'unknown' && incomingPort.service) {
+    existingPort.service = incomingPort.service;
+  }
+
+  const detailSet = new Set(existingPort.details || []);
+  for (const detail of incomingPort.details || []) {
+    if (detailSet.has(detail)) {
+      continue;
+    }
+
+    existingPort.details.push(detail);
+    detailSet.add(detail);
+  }
+}
+
 function mergeResults(results) {
   const hostMap = new Map();
 
   for (const result of results) {
     for (const host of result.hosts || []) {
       if (!hostMap.has(host.ip)) {
-        hostMap.set(host.ip, {
-          id: host.ip,
-          ip: host.ip,
-          hostname: null,
-          domain: null,
-          hostScriptResults: [],
-          ports: [],
-          scanFiles: []
-        });
+        hostMap.set(host.ip, createHost(host.ip));
       }
 
       const existing = hostMap.get(host.ip);
@@ -265,6 +297,7 @@ function mergeResults(results) {
         if (hostScriptSet.has(line)) {
           continue;
         }
+
         existing.hostScriptResults.push(line);
         hostScriptSet.add(line);
       }
@@ -274,19 +307,27 @@ function mergeResults(results) {
         if (scanFileSet.has(scanFile)) {
           continue;
         }
+
         existing.scanFiles.push(scanFile);
         scanFileSet.add(scanFile);
       }
 
-      const portKeySet = new Set(existing.ports.map((port) => `${port.port}/${port.protocol}`));
+      const existingPortsByKey = new Map(existing.ports.map((port) => [`${port.port}/${port.protocol}`, port]));
 
       for (const port of host.ports || []) {
         const key = `${port.port}/${port.protocol}`;
-        if (portKeySet.has(key)) {
+        const existingPort = existingPortsByKey.get(key);
+
+        if (existingPort) {
+          mergePortDetails(existingPort, port);
           continue;
         }
-        existing.ports.push(port);
-        portKeySet.add(key);
+
+        existing.ports.push({
+          ...port,
+          details: [...(port.details || [])]
+        });
+        existingPortsByKey.set(key, existing.ports[existing.ports.length - 1]);
       }
     }
   }
@@ -307,6 +348,7 @@ async function parseScanDirectory(scanDirectory) {
     if (error.code === 'ENOENT') {
       return { hosts: [], edges: [] };
     }
+
     throw error;
   }
 
