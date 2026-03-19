@@ -634,12 +634,12 @@ function bindContextMenuActions() {
     setScanStatus('Connection mode cancelled.', false);
   });
 
-  document.addEventListener('click', (event) => {
+  document.addEventListener('pointerdown', (event) => {
     const menu = document.getElementById('context-menu');
     if (!menu.hidden && !menu.contains(event.target)) {
       hideContextMenu();
     }
-  });
+  }, true);
 }
 
 customGraphState = loadCustomGraphState();
