@@ -4,6 +4,7 @@ let customGraphState = createDefaultCustomGraphState();
 let connectionDraft = null;
 
 const CUSTOM_GRAPH_STORAGE_KEY = 'atlas-custom-graph';
+const GRAPH_LAYOUT_STORAGE_KEY = 'atlas-graph-layout';
 const EDGE_NOTE_EMPTY_STATE = 'Select an edge to inspect or annotate it.';
 const NODE_NOTE_EMPTY_STATE = 'Select a host or domain node to inspect details.';
 
@@ -12,6 +13,13 @@ function createDefaultCustomGraphState() {
     nodeNotes: {},
     edgeNotes: {},
     customEdges: []
+  };
+}
+
+function createDefaultLayoutState() {
+  return {
+    anchorNodeId: null,
+    positions: {}
   };
 }
 
@@ -36,6 +44,131 @@ function loadCustomGraphState() {
 
 function saveCustomGraphState() {
   window.localStorage.setItem(CUSTOM_GRAPH_STORAGE_KEY, JSON.stringify(customGraphState));
+}
+
+function loadLayoutState() {
+  try {
+    const rawState = window.localStorage.getItem(GRAPH_LAYOUT_STORAGE_KEY);
+    if (!rawState) {
+      return createDefaultLayoutState();
+    }
+
+    const parsedState = JSON.parse(rawState);
+    return {
+      anchorNodeId: parsedState.anchorNodeId || null,
+      positions: parsedState.positions || {}
+    };
+  } catch (error) {
+    console.warn('Unable to load graph layout state', error);
+    return createDefaultLayoutState();
+  }
+}
+
+let layoutState = loadLayoutState();
+
+function saveLayoutState() {
+  window.localStorage.setItem(GRAPH_LAYOUT_STORAGE_KEY, JSON.stringify(layoutState));
+}
+
+function getStoredPosition(nodeId) {
+  const position = layoutState.positions[nodeId];
+  if (!position) {
+    return null;
+  }
+
+  if (typeof position.x !== 'number' || typeof position.y !== 'number') {
+    return null;
+  }
+
+  return position;
+}
+
+function persistCurrentNodePositions() {
+  if (!cy) {
+    return;
+  }
+
+  const nextPositions = {};
+  cy.nodes().forEach((node) => {
+    const position = node.position();
+    nextPositions[node.id()] = {
+      x: position.x,
+      y: position.y
+    };
+  });
+
+  layoutState.positions = nextPositions;
+  saveLayoutState();
+}
+
+function pruneStoredPositions(elements = []) {
+  const validNodeIds = new Set(
+    elements
+      .filter((element) => element.data?.id && !element.data?.source && !element.data?.target)
+      .map((element) => element.data.id)
+  );
+
+  layoutState.positions = Object.fromEntries(
+    Object.entries(layoutState.positions).filter(([nodeId]) => validNodeIds.has(nodeId))
+  );
+
+  if (layoutState.anchorNodeId && !validNodeIds.has(layoutState.anchorNodeId)) {
+    layoutState.anchorNodeId = null;
+  }
+}
+
+function applyAnchoredLayout() {
+  if (!cy) {
+    return;
+  }
+
+  const anchorNodeId = layoutState.anchorNodeId;
+  const anchorExists = Boolean(anchorNodeId) && cy.getElementById(anchorNodeId).nonempty();
+  const allNodesHaveStoredPositions = cy.nodes().every((node) => Boolean(getStoredPosition(node.id())));
+
+  if (anchorExists && !allNodesHaveStoredPositions) {
+    const anchorNode = cy.getElementById(anchorNodeId);
+    cy.layout({
+      name: 'breadthfirst',
+      animate: false,
+      directed: true,
+      circle: false,
+      spacingFactor: 1.25,
+      padding: 20,
+      roots: anchorNode
+    }).run();
+    persistCurrentNodePositions();
+  }
+
+  if (Object.keys(layoutState.positions).length > 0) {
+    cy.nodes().positions((node) => getStoredPosition(node.id()) || node.position());
+  } else {
+    cy.layout({
+      name: 'cose',
+      animate: false,
+      padding: 20
+    }).run();
+    persistCurrentNodePositions();
+  }
+}
+
+function updateLayoutButtons() {
+  const anchorButton = document.getElementById('anchor-node-btn');
+  const resetButton = document.getElementById('reset-layout-btn');
+  const selectedNode = cy?.$(':selected').filter('node')[0] || null;
+
+  if (selectedNode) {
+    anchorButton.disabled = false;
+    anchorButton.textContent = `Anchor from ${selectedNode.id()}`;
+  } else if (layoutState.anchorNodeId) {
+    anchorButton.disabled = true;
+    anchorButton.textContent = `Anchor set: ${layoutState.anchorNodeId}`;
+  } else {
+    anchorButton.disabled = true;
+    anchorButton.textContent = 'Set selected node as anchor';
+  }
+
+  resetButton.textContent = layoutState.anchorNodeId ? 'Reset anchored layout' : 'Reset layout';
 }
 
 function truncateNote(note = '', maxLength = 42) {
@@ -315,18 +448,22 @@ function showContextMenuForEdge(event) {
 
 function refreshGraphView() {
   const selectedElement = cy?.$(':selected')[0] || null;
-  initializeGraph(mergeGraphElements());
+  const elements = mergeGraphElements();
+  pruneStoredPositions(elements);
+  initializeGraph(elements);
 
   if (selectedElement) {
     const matchingElement = cy.getElementById(selectedElement.id());
     if (matchingElement.nonempty()) {
       matchingElement.select();
       renderSelectionDetails(matchingElement);
+      updateLayoutButtons();
       return;
     }
   }
 
   renderSelectionDetails(null);
+  updateLayoutButtons();
 }
 
 function upsertCustomEdge(sourceId, targetId, note = '') {
@@ -504,16 +641,21 @@ function initializeGraph(elements) {
       }
     ],
     layout: {
-      name: 'cose',
-      animate: false,
-      padding: 20
+      name: 'preset'
     }
   });
+
+  applyAnchoredLayout();
+  cy.userPanningEnabled(true);
+  cy.userZoomingEnabled(true);
+  cy.autoungrabify(false);
+  cy.nodes().grabify();
 
   cy.on('tap', 'node, edge', (event) => {
     event.target.select();
     renderSelectionDetails(event.target);
     hideContextMenu();
+    updateLayoutButtons();
   });
 
   cy.on('tap', (event) => {
@@ -521,6 +663,7 @@ function initializeGraph(elements) {
       cy.elements().unselect();
       renderSelectionDetails(null);
       hideContextMenu();
+      updateLayoutButtons();
     }
   });
 
@@ -541,6 +684,12 @@ function initializeGraph(elements) {
       hideContextMenu();
     }
   });
+
+  cy.on('dragfree', 'node', () => {
+    persistCurrentNodePositions();
+  });
+
+  updateLayoutButtons();
 }
 
 async function loadGraph() {
@@ -661,7 +810,28 @@ function bindContextMenuActions() {
 }
 
 customGraphState = loadCustomGraphState();
+layoutState = loadLayoutState();
 document.getElementById('refresh-btn').addEventListener('click', refreshGraph);
 document.getElementById('run-scan-btn').addEventListener('click', runScan);
+document.getElementById('anchor-node-btn').addEventListener('click', () => {
+  const selectedNode = cy?.$(':selected').filter('node')[0] || null;
+  if (!selectedNode) {
+    setScanStatus('Select a node first, then click the anchor button.', true);
+    updateLayoutButtons();
+    return;
+  }
+
+  layoutState.anchorNodeId = selectedNode.id();
+  layoutState.positions = {};
+  saveLayoutState();
+  refreshGraphView();
+  setScanStatus(`Anchored graph from ${selectedNode.id()}. Layout will stay left-to-right from that node until reset.`, false);
+});
+document.getElementById('reset-layout-btn').addEventListener('click', () => {
+  layoutState = createDefaultLayoutState();
+  saveLayoutState();
+  refreshGraphView();
+  setScanStatus('Graph layout reset. Select a node if you want to anchor the map again.', false);
+});
 bindContextMenuActions();
 refreshGraph();
