@@ -862,13 +862,7 @@ function bindContextMenuActions() {
   });
 
   document.getElementById('context-close-btn').addEventListener('click', () => {
-    closeContextMenu();
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      closeContextMenu();
-    }
+    hideContextMenu();
   });
 
   document.addEventListener('pointerdown', (event) => {
@@ -922,7 +916,6 @@ if (typeof module !== 'undefined') {
   module.exports = {
     createDefaultCustomGraphState,
     edgeStorageKey,
-    resetContextMenuState,
     sanitizeCustomGraphState
   };
 }

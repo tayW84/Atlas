@@ -4,7 +4,6 @@ const assert = require('node:assert/strict');
 const {
   createDefaultCustomGraphState,
   edgeStorageKey,
-  resetContextMenuState,
   sanitizeCustomGraphState
 } = require('../public/app.js');
 
@@ -69,25 +68,4 @@ test('sanitizeCustomGraphState removes custom edges and notes for missing nodes'
   });
   assert.equal(result.connectionDraft, null);
   assert.equal(result.changed, true);
-});
-
-
-test('resetContextMenuState clears active menu targeting data', () => {
-  const menu = {
-    dataset: {
-      targetId: '172.16.7.60',
-      targetGroup: 'node',
-      edgeSource: 'A',
-      edgeTarget: 'B'
-    }
-  };
-
-  resetContextMenuState(menu);
-
-  assert.deepEqual(menu.dataset, {
-    targetId: '',
-    targetGroup: '',
-    edgeSource: '',
-    edgeTarget: ''
-  });
 });
