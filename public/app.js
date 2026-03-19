@@ -64,7 +64,7 @@ function loadLayoutState() {
   }
 }
 
-let layoutState = loadLayoutState();
+let layoutState = createDefaultLayoutState();
 
 function saveLayoutState() {
   window.localStorage.setItem(GRAPH_LAYOUT_STORAGE_KEY, JSON.stringify(layoutState));
@@ -333,8 +333,62 @@ function renderSelectionDetails(element = null) {
   }
 }
 
+function sanitizeCustomGraphState(validNodeIds = new Set(), state = customGraphState, graph = baseGraph, draft = connectionDraft) {
+  const sanitizedNodeNotes = Object.fromEntries(
+    Object.entries(state.nodeNotes || {}).filter(([nodeId]) => validNodeIds.has(nodeId))
+  );
+
+  const validCustomEdges = (state.customEdges || []).filter((edge) => (
+    validNodeIds.has(edge.source) && validNodeIds.has(edge.target)
+  ));
+
+  const validCustomEdgeKeys = new Set(validCustomEdges.map((edge) => edgeStorageKey(edge.source, edge.target)));
+  const baseEdgeKeys = new Set(
+    (graph.edges || []).map((edge) => edgeStorageKey(edge.data.source, edge.data.target))
+  );
+
+  const sanitizedEdgeNotes = Object.fromEntries(
+    Object.entries(state.edgeNotes || {}).filter(([edgeKey]) => (
+      validCustomEdgeKeys.has(edgeKey) || baseEdgeKeys.has(edgeKey)
+    ))
+  );
+
+  const nextDraft = draft && validNodeIds.has(draft.sourceId) ? draft : null;
+  const nextState = {
+    ...state,
+    nodeNotes: sanitizedNodeNotes,
+    edgeNotes: sanitizedEdgeNotes,
+    customEdges: validCustomEdges
+  };
+
+  const customStateChanged = validCustomEdges.length !== (state.customEdges || []).length
+    || Object.keys(sanitizedNodeNotes).length !== Object.keys(state.nodeNotes || {}).length
+    || Object.keys(sanitizedEdgeNotes).length !== Object.keys(state.edgeNotes || {}).length;
+
+  if (state === customGraphState) {
+    customGraphState = nextState;
+
+    if (customStateChanged) {
+      saveCustomGraphState();
+    }
+  }
+
+  if (draft === connectionDraft) {
+    connectionDraft = nextDraft;
+  }
+
+  return {
+    customState: nextState,
+    connectionDraft: nextDraft,
+    customEdges: validCustomEdges,
+    changed: customStateChanged || nextDraft !== draft
+  };
+}
+
 function buildCustomElements() {
-  const customEdges = customGraphState.customEdges.map((edge) => ({
+  const validNodeIds = new Set(baseGraph.nodes.map((node) => node.data.id));
+  const { customEdges: validCustomEdges } = sanitizeCustomGraphState(validNodeIds);
+  const customEdges = validCustomEdges.map((edge) => ({
     data: {
       id: edge.id,
       source: edge.source,
@@ -385,19 +439,32 @@ function positionContextMenu(event) {
   menu.style.top = `${renderedPosition.y + 16}px`;
 }
 
-function hideContextMenu() {
-  const menu = document.getElementById('context-menu');
-  menu.hidden = true;
+function resetContextMenuState(menu) {
   menu.dataset.targetId = '';
   menu.dataset.targetGroup = '';
   menu.dataset.edgeSource = '';
   menu.dataset.edgeTarget = '';
 }
 
-function queueContextMenuAction(callback) {
+function hideContextMenu() {
+  const menu = document.getElementById('context-menu');
+  resetContextMenuState(menu);
+  menu.hidden = true;
+}
+
+function closeContextMenu() {
   hideContextMenu();
+  document.getElementById('context-connect-btn').blur();
+  document.getElementById('context-note-btn').blur();
+  document.getElementById('context-cancel-connect-btn').blur();
+  document.getElementById('context-close-btn').blur();
+}
+
+function queueContextMenuAction(callback) {
+  closeContextMenu();
   window.requestAnimationFrame(() => {
     callback();
+    closeContextMenu();
   });
 }
 
@@ -408,10 +475,9 @@ function showContextMenuForNode(event) {
   const cancelConnectButton = document.getElementById('context-cancel-connect-btn');
   const noteButton = document.getElementById('context-note-btn');
 
+  resetContextMenuState(menu);
   menu.dataset.targetId = targetNode.id();
   menu.dataset.targetGroup = 'node';
-  menu.dataset.edgeSource = '';
-  menu.dataset.edgeTarget = '';
 
   if (connectionDraft && connectionDraft.sourceId !== targetNode.id()) {
     connectButton.textContent = `Connect from ${connectionDraft.sourceId}`;
@@ -433,6 +499,7 @@ function showContextMenuForEdge(event) {
   const cancelConnectButton = document.getElementById('context-cancel-connect-btn');
   const noteButton = document.getElementById('context-note-btn');
 
+  resetContextMenuState(menu);
   menu.dataset.targetId = targetEdge.id();
   menu.dataset.targetGroup = 'edge';
   menu.dataset.edgeSource = targetEdge.data('source');
@@ -447,6 +514,7 @@ function showContextMenuForEdge(event) {
 }
 
 function refreshGraphView() {
+  closeContextMenu();
   const selectedElement = cy?.$(':selected')[0] || null;
   const elements = mergeGraphElements();
   pruneStoredPositions(elements);
@@ -654,7 +722,7 @@ function initializeGraph(elements) {
   cy.on('tap', 'node, edge', (event) => {
     event.target.select();
     renderSelectionDetails(event.target);
-    hideContextMenu();
+    closeContextMenu();
     updateLayoutButtons();
   });
 
@@ -662,7 +730,7 @@ function initializeGraph(elements) {
     if (event.target === cy) {
       cy.elements().unselect();
       renderSelectionDetails(null);
-      hideContextMenu();
+      closeContextMenu();
       updateLayoutButtons();
     }
   });
@@ -681,7 +749,7 @@ function initializeGraph(elements) {
 
   cy.on('cxttap', (event) => {
     if (event.target === cy) {
-      hideContextMenu();
+      closeContextMenu();
     }
   });
 
@@ -793,10 +861,20 @@ function bindContextMenuActions() {
     });
   });
 
+  document.getElementById('context-close-btn').addEventListener('click', () => {
+    closeContextMenu();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeContextMenu();
+    }
+  });
+
   document.addEventListener('pointerdown', (event) => {
     const menu = document.getElementById('context-menu');
     if (!menu.hidden && !menu.contains(event.target)) {
-      hideContextMenu();
+      closeContextMenu();
     }
   }, true);
 
@@ -804,34 +882,47 @@ function bindContextMenuActions() {
     const menu = document.getElementById('context-menu');
     if (!menu.hidden && !menu.contains(event.target)) {
       event.preventDefault();
-      hideContextMenu();
+      closeContextMenu();
     }
   }, true);
 }
 
-customGraphState = loadCustomGraphState();
-layoutState = loadLayoutState();
-document.getElementById('refresh-btn').addEventListener('click', refreshGraph);
-document.getElementById('run-scan-btn').addEventListener('click', runScan);
-document.getElementById('anchor-node-btn').addEventListener('click', () => {
-  const selectedNode = cy?.$(':selected').filter('node')[0] || null;
-  if (!selectedNode) {
-    setScanStatus('Select a node first, then click the anchor button.', true);
-    updateLayoutButtons();
-    return;
-  }
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  customGraphState = loadCustomGraphState();
+  layoutState = loadLayoutState();
+  document.getElementById('refresh-btn').addEventListener('click', refreshGraph);
+  document.getElementById('run-scan-btn').addEventListener('click', runScan);
+  document.getElementById('anchor-node-btn').addEventListener('click', () => {
+    const selectedNode = cy?.$(':selected').filter('node')[0] || null;
+    if (!selectedNode) {
+      setScanStatus('Select a node first, then click the anchor button.', true);
+      updateLayoutButtons();
+      return;
+    }
 
-  layoutState.anchorNodeId = selectedNode.id();
-  layoutState.positions = {};
-  saveLayoutState();
-  refreshGraphView();
-  setScanStatus(`Anchored graph from ${selectedNode.id()}. Layout will stay left-to-right from that node until reset.`, false);
-});
-document.getElementById('reset-layout-btn').addEventListener('click', () => {
-  layoutState = createDefaultLayoutState();
-  saveLayoutState();
-  refreshGraphView();
-  setScanStatus('Graph layout reset. Select a node if you want to anchor the map again.', false);
-});
-bindContextMenuActions();
-refreshGraph();
+    layoutState.anchorNodeId = selectedNode.id();
+    layoutState.positions = {};
+    saveLayoutState();
+    refreshGraphView();
+    setScanStatus(`Anchored graph from ${selectedNode.id()}. Layout will stay left-to-right from that node until reset.`, false);
+  });
+  document.getElementById('reset-layout-btn').addEventListener('click', () => {
+    layoutState = createDefaultLayoutState();
+    saveLayoutState();
+    refreshGraphView();
+    setScanStatus('Graph layout reset. Select a node if you want to anchor the map again.', false);
+  });
+  bindContextMenuActions();
+  refreshGraph();
+
+
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    createDefaultCustomGraphState,
+    edgeStorageKey,
+    resetContextMenuState,
+    sanitizeCustomGraphState
+  };
+}

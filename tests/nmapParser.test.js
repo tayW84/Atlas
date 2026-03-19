@@ -160,3 +160,59 @@ test('buildGraph adds dashed-link relationship for hosts sharing a domain subnet
   assert.equal(linkEdge.data.target, '10.10.10.200');
   assert.equal(linkEdge.data.type, 'domain-subnet-link');
 });
+
+
+test('parseTextContent captures hostname when the scan header includes host and IP', () => {
+  const content = [
+    'Nmap scan report for fileserver.internal.local (10.0.0.15)',
+    'PORT     STATE SERVICE VERSION',
+    '445/tcp  open  microsoft-ds Windows Server 2022 microsoft-ds',
+    ''
+  ].join('\n');
+
+  const result = parseTextContent(content);
+  assert.equal(result.hosts.length, 1);
+  assert.equal(result.hosts[0].ip, '10.0.0.15');
+  assert.equal(result.hosts[0].hostname, 'fileserver.internal.local');
+});
+
+test('subnetFromIp rejects invalid IPv4 octets', () => {
+  assert.equal(subnetFromIp('999.10.10.10'), null);
+  assert.equal(subnetFromIp('10.10.10'), null);
+});
+
+test('parseScanDirectory merges duplicate ports and preserves richer metadata', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'atlas-merge-'));
+  const firstScan = [
+    'Nmap scan report for web.internal.local (10.20.30.40)',
+    'PORT     STATE SERVICE VERSION',
+    '80/tcp   open  http',
+    '| http-title: Landing page',
+    '',
+    'Host script results:',
+    '| smb-os-discovery: Domain: LAB',
+    ''
+  ].join('\n');
+
+  const secondScan = [
+    'Nmap scan report for 10.20.30.40',
+    'PORT     STATE SERVICE VERSION',
+    '80/tcp   open  http    nginx 1.24.0',
+    '|_http-server-header: nginx',
+    ''
+  ].join('\n');
+
+  await fs.writeFile(path.join(tempDir, 'first.txt'), firstScan);
+  await fs.writeFile(path.join(tempDir, 'second.txt'), secondScan);
+
+  const parsed = await parseScanDirectory(tempDir);
+  assert.equal(parsed.hosts.length, 1);
+  assert.equal(parsed.hosts[0].hostname, 'web.internal.local');
+  assert.deepEqual(parsed.hosts[0].scanFiles.sort(), ['first.txt', 'second.txt']);
+  assert.equal(parsed.hosts[0].ports.length, 1);
+  assert.equal(parsed.hosts[0].ports[0].version, 'nginx 1.24.0');
+  assert.deepEqual(parsed.hosts[0].ports[0].details, [
+    'http-title: Landing page',
+    'http-server-header: nginx'
+  ]);
+});

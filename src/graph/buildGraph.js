@@ -1,11 +1,5 @@
-function subnetFromIp(ip = '') {
-  const octets = ip.split('.');
-  if (octets.length !== 4) {
-    return null;
-  }
+const { subnetFromIp } = require('../netUtils');
 
-  return `${octets[0]}.${octets[1]}.${octets[2]}.0/24`;
-}
 
 function connectedNodeId(host = {}) {
   const domain = host.domain?.trim();
