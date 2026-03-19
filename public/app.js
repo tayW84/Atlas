@@ -793,6 +793,10 @@ function bindContextMenuActions() {
     });
   });
 
+  document.getElementById('context-close-btn').addEventListener('click', () => {
+    hideContextMenu();
+  });
+
   document.addEventListener('pointerdown', (event) => {
     const menu = document.getElementById('context-menu');
     if (!menu.hidden && !menu.contains(event.target)) {
