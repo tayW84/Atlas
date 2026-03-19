@@ -439,19 +439,32 @@ function positionContextMenu(event) {
   menu.style.top = `${renderedPosition.y + 16}px`;
 }
 
-function hideContextMenu() {
-  const menu = document.getElementById('context-menu');
-  menu.hidden = true;
+function resetContextMenuState(menu) {
   menu.dataset.targetId = '';
   menu.dataset.targetGroup = '';
   menu.dataset.edgeSource = '';
   menu.dataset.edgeTarget = '';
 }
 
-function queueContextMenuAction(callback) {
+function hideContextMenu() {
+  const menu = document.getElementById('context-menu');
+  resetContextMenuState(menu);
+  menu.hidden = true;
+}
+
+function closeContextMenu() {
   hideContextMenu();
+  document.getElementById('context-connect-btn').blur();
+  document.getElementById('context-note-btn').blur();
+  document.getElementById('context-cancel-connect-btn').blur();
+  document.getElementById('context-close-btn').blur();
+}
+
+function queueContextMenuAction(callback) {
+  closeContextMenu();
   window.requestAnimationFrame(() => {
     callback();
+    closeContextMenu();
   });
 }
 
@@ -462,10 +475,9 @@ function showContextMenuForNode(event) {
   const cancelConnectButton = document.getElementById('context-cancel-connect-btn');
   const noteButton = document.getElementById('context-note-btn');
 
+  resetContextMenuState(menu);
   menu.dataset.targetId = targetNode.id();
   menu.dataset.targetGroup = 'node';
-  menu.dataset.edgeSource = '';
-  menu.dataset.edgeTarget = '';
 
   if (connectionDraft && connectionDraft.sourceId !== targetNode.id()) {
     connectButton.textContent = `Connect from ${connectionDraft.sourceId}`;
@@ -487,6 +499,7 @@ function showContextMenuForEdge(event) {
   const cancelConnectButton = document.getElementById('context-cancel-connect-btn');
   const noteButton = document.getElementById('context-note-btn');
 
+  resetContextMenuState(menu);
   menu.dataset.targetId = targetEdge.id();
   menu.dataset.targetGroup = 'edge';
   menu.dataset.edgeSource = targetEdge.data('source');
@@ -501,6 +514,7 @@ function showContextMenuForEdge(event) {
 }
 
 function refreshGraphView() {
+  closeContextMenu();
   const selectedElement = cy?.$(':selected')[0] || null;
   const elements = mergeGraphElements();
   pruneStoredPositions(elements);
@@ -708,7 +722,7 @@ function initializeGraph(elements) {
   cy.on('tap', 'node, edge', (event) => {
     event.target.select();
     renderSelectionDetails(event.target);
-    hideContextMenu();
+    closeContextMenu();
     updateLayoutButtons();
   });
 
@@ -716,7 +730,7 @@ function initializeGraph(elements) {
     if (event.target === cy) {
       cy.elements().unselect();
       renderSelectionDetails(null);
-      hideContextMenu();
+      closeContextMenu();
       updateLayoutButtons();
     }
   });
@@ -735,7 +749,7 @@ function initializeGraph(elements) {
 
   cy.on('cxttap', (event) => {
     if (event.target === cy) {
-      hideContextMenu();
+      closeContextMenu();
     }
   });
 
@@ -854,7 +868,7 @@ function bindContextMenuActions() {
   document.addEventListener('pointerdown', (event) => {
     const menu = document.getElementById('context-menu');
     if (!menu.hidden && !menu.contains(event.target)) {
-      hideContextMenu();
+      closeContextMenu();
     }
   }, true);
 
@@ -862,7 +876,7 @@ function bindContextMenuActions() {
     const menu = document.getElementById('context-menu');
     if (!menu.hidden && !menu.contains(event.target)) {
       event.preventDefault();
-      hideContextMenu();
+      closeContextMenu();
     }
   }, true);
 }
