@@ -199,3 +199,34 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+#node-note,
+#edge-summary,
+#edge-note {
+  background: rgba(8, 15, 33, 0.72);
+  border: 1px solid rgba(110, 139, 239, 0.28);
+  border-radius: 8px;
+  min-height: 2.5rem;
+  padding: 0.65rem 0.75rem;
+  white-space: pre-wrap;
+}
+
+.context-menu {
+  background: rgba(8, 12, 28, 0.96);
+  border: 1px solid rgba(140, 164, 255, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 14px 30px rgba(2, 6, 18, 0.55);
+  display: grid;
+  gap: 0.45rem;
+  min-width: 220px;
+  padding: 0.6rem;
+  position: fixed;
+  z-index: 20;
+}
+
+.context-menu button {
+  border-radius: 10px;
+  font-size: 0.92rem;
+  padding: 0.55rem 0.8rem;
+  text-align: left;
+}

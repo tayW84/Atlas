@@ -34,18 +34,29 @@
         <div id="cy"></div>
       </section>
       <aside id="details-panel">
-        <h2>Host Details</h2>
-        <p id="host-hostname">Click a host node to inspect services.</p>
+        <h2>Selection Details</h2>
+        <p id="host-hostname">Right-click nodes to connect or annotate them.</p>
         <p id="host-ip"></p>
         <p id="host-domain"></p>
         <a id="scan-file-link" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true">Open Nmap scan file</a>
         <p id="scan-status" role="status" aria-live="polite"></p>
+        <h3>Node Notes</h3>
+        <p id="node-note">Select a host or domain node to inspect details.</p>
+        <h3>Edge Details</h3>
+        <p id="edge-summary"></p>
+        <p id="edge-note">Select an edge to inspect or annotate it.</p>
         <h3>Open Ports</h3>
         <ul id="ports-list"></ul>
         <h3>Host Script Results</h3>
         <ul id="host-script-results-list"></ul>
       </aside>
     </main>
+
+    <div id="context-menu" class="context-menu" hidden>
+      <button id="context-connect-btn" type="button">Start connection</button>
+      <button id="context-note-btn" type="button">Add note</button>
+      <button id="context-cancel-connect-btn" type="button" hidden>Cancel connection mode</button>
+    </div>
 
     <script src="https://unpkg.com/cytoscape@3.30.3/dist/cytoscape.min.js"></script>
     <script src="/app.js"></script>

@@ -1,4 +1,63 @@
 let cy;
+let baseGraph = { nodes: [], edges: [] };
+let customGraphState = createDefaultCustomGraphState();
+let connectionDraft = null;
+
+const CUSTOM_GRAPH_STORAGE_KEY = 'atlas-custom-graph';
+const EDGE_NOTE_EMPTY_STATE = 'Select an edge to inspect or annotate it.';
+const NODE_NOTE_EMPTY_STATE = 'Select a host or domain node to inspect details.';
+
+function createDefaultCustomGraphState() {
+  return {
+    nodeNotes: {},
+    edgeNotes: {},
+    customEdges: []
+  };
+}
+
+function loadCustomGraphState() {
+  try {
+    const rawState = window.localStorage.getItem(CUSTOM_GRAPH_STORAGE_KEY);
+    if (!rawState) {
+      return createDefaultCustomGraphState();
+    }
+
+    const parsedState = JSON.parse(rawState);
+    return {
+      nodeNotes: parsedState.nodeNotes || {},
+      edgeNotes: parsedState.edgeNotes || {},
+      customEdges: Array.isArray(parsedState.customEdges) ? parsedState.customEdges : []
+    };
+  } catch (error) {
+    console.warn('Unable to load custom graph state', error);
+    return createDefaultCustomGraphState();
+  }
+}
+
+function saveCustomGraphState() {
+  window.localStorage.setItem(CUSTOM_GRAPH_STORAGE_KEY, JSON.stringify(customGraphState));
+}
+
+function truncateNote(note = '', maxLength = 42) {
+  const trimmed = note.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, maxLength - 1)}…`;
+}
+
+function edgeStorageKey(sourceId, targetId) {
+  return `${sourceId}=>${targetId}`;
+}
+
+function getNodeNote(nodeId) {
+  return customGraphState.nodeNotes[nodeId] || '';
+}
+
+function getEdgeNote(sourceId, targetId) {
+  return customGraphState.edgeNotes[edgeStorageKey(sourceId, targetId)] || '';
+}
 
 function setScanFileLink(scanFiles = []) {
   const scanFileLink = document.getElementById('scan-file-link');
@@ -22,22 +81,62 @@ function setScanStatus(message, isError = false) {
   statusElement.dataset.state = isError ? 'error' : 'info';
 }
 
-function renderPortDetails(nodeData) {
+function renderSelectionDetails(element = null) {
   const hostIpElement = document.getElementById('host-ip');
   const hostNameElement = document.getElementById('host-hostname');
   const hostDomainElement = document.getElementById('host-domain');
   const hostScriptResultsListElement = document.getElementById('host-script-results-list');
   const portsListElement = document.getElementById('ports-list');
+  const nodeNoteElement = document.getElementById('node-note');
+  const edgeSummaryElement = document.getElementById('edge-summary');
+  const edgeNoteElement = document.getElementById('edge-note');
 
   hostScriptResultsListElement.innerHTML = '';
   portsListElement.innerHTML = '';
+  nodeNoteElement.textContent = NODE_NOTE_EMPTY_STATE;
+  edgeSummaryElement.textContent = '';
+  edgeNoteElement.textContent = EDGE_NOTE_EMPTY_STATE;
 
-  if (!nodeData || nodeData.type !== 'host') {
-    hostNameElement.textContent = 'Click a host node to inspect services.';
+  if (!element) {
+    hostNameElement.textContent = 'Right-click nodes to connect or annotate them.';
     hostIpElement.textContent = '';
     hostDomainElement.textContent = '';
-    hostScriptResultsListElement.innerHTML = '';
     setScanFileLink([]);
+    return;
+  }
+
+  if (element.group() === 'edges') {
+    const edgeData = element.data();
+    const note = edgeData.note || 'No note added yet.';
+
+    hostNameElement.textContent = 'Edge selected';
+    hostIpElement.textContent = '';
+    hostDomainElement.textContent = '';
+    setScanFileLink([]);
+    edgeSummaryElement.textContent = `${edgeData.source} → ${edgeData.target}`;
+    edgeNoteElement.textContent = note;
+    nodeNoteElement.textContent = NODE_NOTE_EMPTY_STATE;
+    return;
+  }
+
+  const nodeData = element.data();
+  const nodeTypeLabel = nodeData.type === 'host' ? 'host' : 'domain/subnet';
+  const nodeNote = nodeData.note || 'No note added yet.';
+  nodeNoteElement.textContent = nodeNote;
+
+  if (nodeData.type !== 'host') {
+    hostNameElement.textContent = `Selected ${nodeTypeLabel}: ${nodeData.id}`;
+    hostIpElement.textContent = nodeData.metadata?.subnet ? `Subnet: ${nodeData.metadata.subnet}` : '';
+    hostDomainElement.textContent = '';
+    setScanFileLink([]);
+
+    const emptyStateItem = document.createElement('li');
+    emptyStateItem.textContent = 'No host script results available for this node type.';
+    hostScriptResultsListElement.appendChild(emptyStateItem);
+
+    const portsEmptyStateItem = document.createElement('li');
+    portsEmptyStateItem.textContent = 'No open ports found for this node type.';
+    portsListElement.appendChild(portsEmptyStateItem);
     return;
   }
 
@@ -101,8 +200,223 @@ function renderPortDetails(nodeData) {
   }
 }
 
+function buildCustomElements() {
+  const customEdges = customGraphState.customEdges.map((edge) => ({
+    data: {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      type: 'custom-link',
+      note: getEdgeNote(edge.source, edge.target),
+      notePreview: truncateNote(getEdgeNote(edge.source, edge.target))
+    }
+  }));
+
+  return {
+    nodes: [],
+    edges: customEdges
+  };
+}
+
+function mergeGraphElements() {
+  const baseNodes = baseGraph.nodes.map((node) => ({
+    data: {
+      ...node.data,
+      note: getNodeNote(node.data.id)
+    },
+    classes: getNodeNote(node.data.id) ? 'has-note' : ''
+  }));
+
+  const baseEdges = baseGraph.edges.map((edge) => ({
+    data: {
+      ...edge.data,
+      note: getEdgeNote(edge.data.source, edge.data.target),
+      notePreview: truncateNote(getEdgeNote(edge.data.source, edge.data.target))
+    },
+    classes: getEdgeNote(edge.data.source, edge.data.target) ? 'has-note' : ''
+  }));
+
+  const customElements = buildCustomElements();
+  const customEdges = customElements.edges.map((edge) => ({
+    ...edge,
+    classes: edge.data.note ? 'has-note' : ''
+  }));
+
+  return [...baseNodes, ...baseEdges, ...customEdges];
+}
+
+function positionContextMenu(event) {
+  const menu = document.getElementById('context-menu');
+  const renderedPosition = event.renderedPosition || event.position || { x: 0, y: 0 };
+  menu.style.left = `${renderedPosition.x + 16}px`;
+  menu.style.top = `${renderedPosition.y + 16}px`;
+}
+
+function hideContextMenu() {
+  const menu = document.getElementById('context-menu');
+  menu.hidden = true;
+  menu.dataset.targetId = '';
+  menu.dataset.targetGroup = '';
+  menu.dataset.edgeSource = '';
+  menu.dataset.edgeTarget = '';
+}
+
+function showContextMenuForNode(event) {
+  const menu = document.getElementById('context-menu');
+  const targetNode = event.target;
+  const connectButton = document.getElementById('context-connect-btn');
+  const cancelConnectButton = document.getElementById('context-cancel-connect-btn');
+  const noteButton = document.getElementById('context-note-btn');
+
+  menu.dataset.targetId = targetNode.id();
+  menu.dataset.targetGroup = 'node';
+  menu.dataset.edgeSource = '';
+  menu.dataset.edgeTarget = '';
+
+  if (connectionDraft && connectionDraft.sourceId !== targetNode.id()) {
+    connectButton.textContent = `Connect from ${connectionDraft.sourceId}`;
+  } else {
+    connectButton.textContent = `Start connection from ${targetNode.id()}`;
+  }
+
+  noteButton.textContent = getNodeNote(targetNode.id()) ? 'Edit node note' : 'Add node note';
+  cancelConnectButton.hidden = !connectionDraft;
+
+  positionContextMenu(event);
+  menu.hidden = false;
+}
+
+function showContextMenuForEdge(event) {
+  const menu = document.getElementById('context-menu');
+  const targetEdge = event.target;
+  const connectButton = document.getElementById('context-connect-btn');
+  const cancelConnectButton = document.getElementById('context-cancel-connect-btn');
+  const noteButton = document.getElementById('context-note-btn');
+
+  menu.dataset.targetId = targetEdge.id();
+  menu.dataset.targetGroup = 'edge';
+  menu.dataset.edgeSource = targetEdge.data('source');
+  menu.dataset.edgeTarget = targetEdge.data('target');
+
+  connectButton.textContent = 'Connections require nodes';
+  noteButton.textContent = targetEdge.data('note') ? 'Edit edge note' : 'Add edge note';
+  cancelConnectButton.hidden = !connectionDraft;
+
+  positionContextMenu(event);
+  menu.hidden = false;
+}
+
+function refreshGraphView() {
+  const selectedElement = cy?.$(':selected')[0] || null;
+  initializeGraph(mergeGraphElements());
+
+  if (selectedElement) {
+    const matchingElement = cy.getElementById(selectedElement.id());
+    if (matchingElement.nonempty()) {
+      matchingElement.select();
+      renderSelectionDetails(matchingElement);
+      return;
+    }
+  }
+
+  renderSelectionDetails(null);
+}
+
+function upsertCustomEdge(sourceId, targetId, note = '') {
+  const existingEdge = customGraphState.customEdges.find((edge) => edge.source === sourceId && edge.target === targetId);
+  if (!existingEdge) {
+    customGraphState.customEdges.push({
+      id: `custom:${sourceId}->${targetId}`,
+      source: sourceId,
+      target: targetId
+    });
+  }
+
+  if (note.trim()) {
+    customGraphState.edgeNotes[edgeStorageKey(sourceId, targetId)] = note.trim();
+  }
+
+  saveCustomGraphState();
+}
+
+function promptForNote(existingNote = '', promptLabel = 'Add a note') {
+  const enteredNote = window.prompt(`${promptLabel}. Leave blank to remove the note.`, existingNote);
+  if (enteredNote === null) {
+    return null;
+  }
+
+  return enteredNote.trim();
+}
+
+function handleNodeConnectionAction(nodeId) {
+  if (!connectionDraft) {
+    connectionDraft = { sourceId: nodeId };
+    setScanStatus(`Connection mode enabled from ${nodeId}. Right-click another node or domain and choose connect.`, false);
+    return;
+  }
+
+  if (connectionDraft.sourceId === nodeId) {
+    setScanStatus('Choose a different target node or domain to create a link.', true);
+    return;
+  }
+
+  const edgeNote = promptForNote('', `Add a note for the edge ${connectionDraft.sourceId} → ${nodeId}`);
+  if (edgeNote === null) {
+    setScanStatus('Connection cancelled.', false);
+    connectionDraft = null;
+    return;
+  }
+
+  upsertCustomEdge(connectionDraft.sourceId, nodeId, edgeNote);
+  const sourceId = connectionDraft.sourceId;
+  connectionDraft = null;
+  refreshGraphView();
+  setScanStatus(`Created a custom link from ${sourceId} to ${nodeId}.`, false);
+}
+
+function handleNoteAction(targetGroup, targetId, edgeSource, edgeTarget) {
+  if (targetGroup === 'node') {
+    const existingNote = getNodeNote(targetId);
+    const nextNote = promptForNote(existingNote, `Edit note for ${targetId}`);
+    if (nextNote === null) {
+      return;
+    }
+
+    if (nextNote) {
+      customGraphState.nodeNotes[targetId] = nextNote;
+    } else {
+      delete customGraphState.nodeNotes[targetId];
+    }
+
+    saveCustomGraphState();
+    refreshGraphView();
+    setScanStatus(nextNote ? `Updated note for ${targetId}.` : `Removed note for ${targetId}.`, false);
+    return;
+  }
+
+  const existingNote = getEdgeNote(edgeSource, edgeTarget);
+  const nextNote = promptForNote(existingNote, `Edit note for ${edgeSource} → ${edgeTarget}`);
+  if (nextNote === null) {
+    return;
+  }
+
+  if (nextNote) {
+    customGraphState.edgeNotes[edgeStorageKey(edgeSource, edgeTarget)] = nextNote;
+  } else {
+    delete customGraphState.edgeNotes[edgeStorageKey(edgeSource, edgeTarget)];
+  }
+
+  saveCustomGraphState();
+  refreshGraphView();
+  setScanStatus(nextNote ? `Updated note for ${edgeSource} → ${edgeTarget}.` : `Removed note for ${edgeSource} → ${edgeTarget}.`, false);
+}
+
 function initializeGraph(elements) {
   const container = document.getElementById('cy');
+
+  if (cy) {
+    cy.destroy();
+  }
 
   cy = cytoscape({
     container,
@@ -118,7 +432,9 @@ function initializeGraph(elements) {
           'text-valign': 'center',
           'text-wrap': 'wrap',
           width: 72,
-          height: 72
+          height: 72,
+          'border-width': 0,
+          'overlay-opacity': 0
         }
       },
       {
@@ -132,12 +448,27 @@ function initializeGraph(elements) {
         }
       },
       {
+        selector: 'node.has-note',
+        style: {
+          'border-width': 3,
+          'border-color': '#ffd166'
+        }
+      },
+      {
         selector: 'edge',
         style: {
           width: 2,
           'line-color': '#8a8a8a',
           'target-arrow-color': '#8a8a8a',
-          'target-arrow-shape': 'triangle'
+          'target-arrow-shape': 'triangle',
+          label: 'data(notePreview)',
+          'font-size': 10,
+          'text-background-color': '#081021',
+          'text-background-opacity': 0.8,
+          'text-background-padding': '3px',
+          color: '#ffd166',
+          'curve-style': 'bezier',
+          'overlay-opacity': 0
         }
       },
       {
@@ -146,6 +477,22 @@ function initializeGraph(elements) {
           'line-style': 'dashed',
           'target-arrow-shape': 'none',
           'line-color': '#4caf50'
+        }
+      },
+      {
+        selector: 'edge[type="custom-link"]',
+        style: {
+          width: 3,
+          'line-color': '#ff9f1c',
+          'target-arrow-color': '#ff9f1c'
+        }
+      },
+      {
+        selector: ':selected',
+        style: {
+          'underlay-color': '#65d5ff',
+          'underlay-opacity': 0.22,
+          'underlay-padding': 8
         }
       }
     ],
@@ -156,8 +503,36 @@ function initializeGraph(elements) {
     }
   });
 
-  cy.on('tap', 'node', (event) => {
-    renderPortDetails(event.target.data());
+  cy.on('tap', 'node, edge', (event) => {
+    event.target.select();
+    renderSelectionDetails(event.target);
+    hideContextMenu();
+  });
+
+  cy.on('tap', (event) => {
+    if (event.target === cy) {
+      cy.elements().unselect();
+      renderSelectionDetails(null);
+      hideContextMenu();
+    }
+  });
+
+  cy.on('cxttap', 'node', (event) => {
+    event.target.select();
+    renderSelectionDetails(event.target);
+    showContextMenuForNode(event);
+  });
+
+  cy.on('cxttap', 'edge', (event) => {
+    event.target.select();
+    renderSelectionDetails(event.target);
+    showContextMenuForEdge(event);
+  });
+
+  cy.on('cxttap', (event) => {
+    if (event.target === cy) {
+      hideContextMenu();
+    }
   });
 }
 
@@ -169,19 +544,17 @@ async function loadGraph() {
     throw new Error(payload.error || 'Failed to load network map');
   }
 
-  const elements = [...payload.graph.nodes, ...payload.graph.edges];
+  baseGraph = {
+    nodes: payload.graph.nodes,
+    edges: payload.graph.edges
+  };
 
   const subnetInput = document.getElementById('subnet-input');
   if (!subnetInput.value && payload.defaultSubnet) {
     subnetInput.value = payload.defaultSubnet;
   }
 
-  if (cy) {
-    cy.destroy();
-  }
-
-  initializeGraph(elements);
-  renderPortDetails(null);
+  refreshGraphView();
 }
 
 async function refreshGraph() {
@@ -190,10 +563,9 @@ async function refreshGraph() {
 
   try {
     await loadGraph();
-    setScanStatus('Graph refreshed.');
+    setScanStatus('Graph refreshed. Right-click a node to create a custom link or note.', false);
   } catch (error) {
     setScanStatus(`Unable to refresh graph: ${error.message}`, true);
-    // eslint-disable-next-line no-alert
     alert(`Unable to refresh graph: ${error.message}`);
   } finally {
     button.disabled = false;
@@ -227,13 +599,51 @@ async function runScan() {
     await loadGraph();
   } catch (error) {
     setScanStatus(`Unable to run scan: ${error.message}`, true);
-    // eslint-disable-next-line no-alert
     alert(`Unable to run scan: ${error.message}`);
   } finally {
     runButton.disabled = false;
   }
 }
 
+function bindContextMenuActions() {
+  document.getElementById('context-connect-btn').addEventListener('click', () => {
+    const menu = document.getElementById('context-menu');
+    const targetGroup = menu.dataset.targetGroup;
+    const targetId = menu.dataset.targetId;
+
+    hideContextMenu();
+
+    if (targetGroup !== 'node') {
+      setScanStatus('Select a node or domain to create a connection.', true);
+      return;
+    }
+
+    handleNodeConnectionAction(targetId);
+  });
+
+  document.getElementById('context-note-btn').addEventListener('click', () => {
+    const menu = document.getElementById('context-menu');
+    const { targetGroup, targetId, edgeSource, edgeTarget } = menu.dataset;
+    hideContextMenu();
+    handleNoteAction(targetGroup, targetId, edgeSource, edgeTarget);
+  });
+
+  document.getElementById('context-cancel-connect-btn').addEventListener('click', () => {
+    connectionDraft = null;
+    hideContextMenu();
+    setScanStatus('Connection mode cancelled.', false);
+  });
+
+  document.addEventListener('click', (event) => {
+    const menu = document.getElementById('context-menu');
+    if (!menu.hidden && !menu.contains(event.target)) {
+      hideContextMenu();
+    }
+  });
+}
+
+customGraphState = loadCustomGraphState();
 document.getElementById('refresh-btn').addEventListener('click', refreshGraph);
 document.getElementById('run-scan-btn').addEventListener('click', runScan);
+bindContextMenuActions();
 refreshGraph();
